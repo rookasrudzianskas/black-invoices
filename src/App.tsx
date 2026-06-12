@@ -23,6 +23,7 @@ import {
   formatCurrency,
   formatRate,
   getTaxCountry,
+  invoiceSubtotal,
   invoiceWithResolvedTotal,
   type InvoiceData,
   type LineItem,
@@ -115,10 +116,13 @@ const createLineItem = (): LineItem => ({
   price: 1400,
 });
 
+const MAX_LOGO_BYTES = 4 * 1024 * 1024;
+
 export default function App() {
   const [invoice, setInvoice] = useState<InvoiceData>(defaultInvoice);
   const [logoError, setLogoError] = useState("");
   const pdfInvoice = useMemo(() => invoiceWithResolvedTotal(invoice), [invoice]);
+  const subtotal = useMemo(() => invoiceSubtotal(invoice), [invoice]);
   const taxCountry = useMemo(
     () => getTaxCountry(invoice.taxCountryCode),
     [invoice.taxCountryCode],
@@ -203,6 +207,11 @@ export default function App() {
       return;
     }
 
+    if (file.size > MAX_LOGO_BYTES) {
+      setLogoError("Keep the logo under 4 MB.");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const result = typeof reader.result === "string" ? reader.result : "";
@@ -218,9 +227,14 @@ export default function App() {
         const canvas = document.createElement("canvas");
         const context = canvas.getContext("2d");
 
+        if (!context) {
+          setLogoError("That logo could not be prepared.");
+          return;
+        }
+
         canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
         canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
-        context?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
         setLogoError("");
         setInvoice((current) => ({
@@ -274,7 +288,9 @@ export default function App() {
             <strong>EUR / €</strong>
           </div>
           <div>
-            <span>{taxCountry.taxName}</span>
+            <span>
+              {taxCountry.taxName} {formatRate(taxCountry.rate)}
+            </span>
             <strong>{formatCurrency(pdfInvoice.salesTax)}</strong>
           </div>
           <div>
@@ -305,9 +321,10 @@ export default function App() {
                   <input
                     accept="image/png,image/jpeg"
                     type="file"
-                    onChange={(event) =>
-                      handleLogoUpload(event.currentTarget.files?.[0])
-                    }
+                    onChange={(event) => {
+                      handleLogoUpload(event.currentTarget.files?.[0]);
+                      event.currentTarget.value = "";
+                    }}
                   />
                 </label>
                 {invoice.logoDataUrl ? (
@@ -315,6 +332,8 @@ export default function App() {
                     className="text-button"
                     type="button"
                     onClick={clearLogo}
+                    aria-label="Remove uploaded logo"
+                    title="Remove uploaded logo"
                   >
                     <X size={14} aria-hidden="true" />
                     Remove
@@ -396,6 +415,10 @@ export default function App() {
                 <strong>
                   {taxCountry.taxName} {formatRate(taxCountry.rate)}
                 </strong>
+              </div>
+              <div>
+                <span>Tax basis</span>
+                <strong>{formatCurrency(subtotal)}</strong>
               </div>
               <div>
                 <span>Tax</span>

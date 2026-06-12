@@ -39,26 +39,31 @@ const stampUploadedLogo = async (pdfBytes: Buffer, logoDataUrl: string) => {
     return pdfBytes;
   }
 
-  const document = await PDFDocument.load(pdfBytes);
-  const [page] = document.getPages();
-  const image =
-    logo.format === "png"
-      ? await document.embedPng(logo.bytes)
-      : await document.embedJpg(logo.bytes);
+  try {
+    const document = await PDFDocument.load(pdfBytes);
+    const [page] = document.getPages();
+    const image =
+      logo.format === "png"
+        ? await document.embedPng(logo.bytes)
+        : await document.embedJpg(logo.bytes);
 
-  const box = { left: 36, top: 45, size: 52 };
-  const scaled = image.scaleToFit(box.size, box.size);
-  const x = box.left + (box.size - scaled.width) / 2;
-  const y = page.getHeight() - box.top - box.size + (box.size - scaled.height) / 2;
+    const box = { left: 36, top: 45, size: 52 };
+    const scaled = image.scaleToFit(box.size, box.size);
+    const x = box.left + (box.size - scaled.width) / 2;
+    const y =
+      page.getHeight() - box.top - box.size + (box.size - scaled.height) / 2;
 
-  page.drawImage(image, {
-    x,
-    y,
-    width: scaled.width,
-    height: scaled.height,
-  });
+    page.drawImage(image, {
+      x,
+      y,
+      width: scaled.width,
+      height: scaled.height,
+    });
 
-  return Buffer.from(await document.save());
+    return Buffer.from(await document.save());
+  } catch {
+    return pdfBytes;
+  }
 };
 
 const readInvoice = async (request: Request) => {
@@ -69,11 +74,24 @@ const readInvoice = async (request: Request) => {
   }
 
   const formData = await request.formData();
-  return JSON.parse(String(formData.get("invoice") ?? "{}")) as InvoiceData;
+  const rawInvoice = formData.get("invoice");
+
+  if (typeof rawInvoice !== "string") {
+    throw new Error("Missing invoice payload");
+  }
+
+  return JSON.parse(rawInvoice) as InvoiceData;
 };
 
 export async function POST(request: Request) {
-  const invoice = invoiceWithResolvedTotal(await readInvoice(request));
+  let invoice: InvoiceData;
+
+  try {
+    invoice = invoiceWithResolvedTotal(await readInvoice(request));
+  } catch {
+    return Response.json({ error: "Invalid invoice payload" }, { status: 400 });
+  }
+
   const stream = await pdf(<InvoicePdf data={invoice} />).toBuffer();
   const buffer = await stampUploadedLogo(
     await streamToBuffer(stream),

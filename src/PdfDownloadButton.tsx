@@ -38,11 +38,14 @@ export default function PdfDownloadButton({ data }: PdfDownloadButtonProps) {
         type="button"
         onClick={downloadPdf}
         disabled={isRendering}
+        aria-busy={isRendering}
       >
         <ArrowDownToLine size={17} aria-hidden="true" />
         {isRendering ? "Rendering" : "Download PDF"}
       </button>
-      <span>{safeFileName(data.invoiceNo)}</span>
+      <span className="download-filename" aria-live="polite">
+        {safeFileName(data.invoiceNo)}
+      </span>
     </div>
   );
 }
