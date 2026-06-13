@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  displayValue,
   formatCurrency,
   formatDate,
   formatIban,
   formatRate,
+  getAppCopy,
+  getInvoiceCopy,
   getTaxCountry,
   invoiceSubtotal,
   invoiceWithResolvedTotal,
@@ -29,13 +32,13 @@ const PartyPreview = ({
 }) => (
   <div className="preview-party">
     <div className="preview-muted preview-heading">{title}</div>
-    <div>{party.name}</div>
-    <div>{party.email}</div>
-    <div>{party.phone}</div>
-    <div>{party.address}</div>
-    <div>{party.cityLine}</div>
+    <div>{displayValue(party.name)}</div>
+    <div>{displayValue(party.email)}</div>
+    <div>{displayValue(party.phone)}</div>
+    <div>{displayValue(party.address)}</div>
+    <div>{displayValue(party.cityLine)}</div>
     <div>
-      {taxIdLabel}: {party.vatId}
+      {taxIdLabel}: {displayValue(party.vatId)}
     </div>
   </div>
 );
@@ -47,6 +50,14 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
   const taxCountry = useMemo(
     () => getTaxCountry(invoice.taxCountryCode),
     [invoice.taxCountryCode],
+  );
+  const copy = useMemo(
+    () => getInvoiceCopy(invoice.taxCountryCode, invoice.languageMode),
+    [invoice.languageMode, invoice.taxCountryCode],
+  );
+  const appCopy = useMemo(
+    () => getAppCopy(invoice.taxCountryCode, invoice.languageMode),
+    [invoice.languageMode, invoice.taxCountryCode],
   );
   const subtotal = useMemo(() => invoiceSubtotal(invoice), [invoice]);
 
@@ -74,7 +85,7 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
           ["--preview-scale" as string]: scale,
         }}
       >
-        <div className="invoice-paper" aria-label="Invoice preview">
+        <div className="invoice-paper" aria-label={appCopy.invoicePreview}>
           <div className="preview-logo">
             {invoice.logoDataUrl ? (
               <img
@@ -89,44 +100,44 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
 
           <div className="preview-meta">
             <div>
-              <span className="preview-muted">Invoice NO: </span>
-              {invoice.invoiceNo}
+              <span className="preview-muted">{copy.invoiceNo}: </span>
+              {displayValue(invoice.invoiceNo)}
             </div>
             <div>
-              <span className="preview-muted">Issue date: </span>
+              <span className="preview-muted">{copy.issueDate}: </span>
               {formatDate(invoice.issueDate, invoice.taxCountryCode)}
             </div>
             <div className="preview-meta-right">
-              <span className="preview-muted">Due date: </span>
+              <span className="preview-muted">{copy.dueDate}: </span>
               {formatDate(invoice.dueDate, invoice.taxCountryCode)}
             </div>
           </div>
 
           <div className="preview-from">
             <PartyPreview
-              taxIdLabel={taxCountry.taxIdLabel}
-              title="From"
+              taxIdLabel={copy.taxId}
+              title={copy.from}
               party={invoice.from}
             />
           </div>
           <div className="preview-to">
             <PartyPreview
-              taxIdLabel={taxCountry.taxIdLabel}
-              title="To"
+              taxIdLabel={copy.taxId}
+              title={copy.to}
               party={invoice.to}
             />
           </div>
 
           <div className="preview-items">
             <div className="preview-item-row preview-muted">
-              <span>Item</span>
-              <span>Qty</span>
-              <span>Unit price</span>
+              <span>{copy.item}</span>
+              <span>{copy.quantity}</span>
+              <span>{copy.unitPrice}</span>
             </div>
             {invoice.items.map((item) => (
               <div className="preview-item-row" key={item.id}>
-                <span>{item.item}</span>
-                <span>{item.quantity}</span>
+                <span>{displayValue(item.item)}</span>
+                <span>{displayValue(item.quantity)}</span>
                 <span>
                   {formatCurrency(item.price, {
                     countryCode: invoice.taxCountryCode,
@@ -139,7 +150,7 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
 
           <div className="preview-totals">
             <div className="preview-tax-row">
-              <span className="preview-muted">Subtotal</span>
+              <span className="preview-muted">{copy.subtotal}</span>
               <span className="preview-muted">
                 {formatCurrency(subtotal, {
                   countryCode: invoice.taxCountryCode,
@@ -149,7 +160,7 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
             </div>
             <div className="preview-tax-row">
               <span className="preview-muted">
-                {taxCountry.taxName} {formatRate(taxCountry.rate)}
+                {copy.taxName} {formatRate(taxCountry.rate)}
               </span>
               <span className="preview-muted">
                 {formatCurrency(invoice.salesTax, {
@@ -160,7 +171,7 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
             </div>
             <div className="preview-rule" />
             <div className="preview-total-row">
-              <span className="preview-muted">Total</span>
+              <span className="preview-muted">{copy.total}</span>
               <span className="preview-total">
                 {formatCurrency(invoice.total, {
                   countryCode: invoice.taxCountryCode,
@@ -171,18 +182,26 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
           </div>
 
           <div className="preview-payment">
-            <div className="preview-muted preview-heading">Payment details</div>
-            <div>Beneficiary: {invoice.payment.beneficiary}</div>
-            <div>Bank: {invoice.payment.bank}</div>
-            <div>IBAN: {formatIban(invoice.payment.iban)}</div>
-            <div>BIC/SWIFT: {invoice.payment.bic}</div>
-            <div>Reference: {invoice.payment.reference}</div>
-            <div>{invoice.payment.terms}</div>
+            <div className="preview-muted preview-heading">
+              {copy.paymentDetails}
+            </div>
+            <div>
+              {copy.beneficiary}: {displayValue(invoice.payment.beneficiary)}
+            </div>
+            <div>
+              {copy.bank}: {displayValue(invoice.payment.bank)}
+            </div>
+            <div>IBAN: {displayValue(formatIban(invoice.payment.iban))}</div>
+            <div>BIC/SWIFT: {displayValue(invoice.payment.bic)}</div>
+            <div>
+              {copy.reference}: {displayValue(invoice.payment.reference)}
+            </div>
+            <div>{displayValue(invoice.payment.terms)}</div>
           </div>
 
           <div className="preview-note">
-            <div className="preview-muted preview-heading">Note</div>
-            <div>{invoice.note}</div>
+            <div className="preview-muted preview-heading">{copy.note}</div>
+            <div>{displayValue(invoice.note)}</div>
           </div>
         </div>
       </div>

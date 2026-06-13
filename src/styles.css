@@ -15,8 +15,9 @@
   --danger: #ff775f;
   --success: #b9ff8f;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
-  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
-    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-geist-mono), "Noto Sans Mono", "Noto Sans Armenian",
+    "Noto Sans Georgian", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
@@ -109,6 +110,7 @@ textarea:disabled {
 .app-header h1,
 .preview-toolbar h2 {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 21px;
   font-weight: 700;
   line-height: 1.08;
@@ -220,7 +222,7 @@ textarea:disabled {
 .field span {
   color: var(--muted);
   font-size: 11px;
-  line-height: 1;
+  line-height: 1.25;
 }
 
 .field input,
@@ -238,6 +240,12 @@ textarea:disabled {
     background-color 160ms ease,
     box-shadow 160ms ease,
     opacity 160ms ease;
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: color-mix(in srgb, var(--quiet) 74%, var(--muted));
+  opacity: 1;
 }
 
 .logo-uploader {
@@ -365,6 +373,56 @@ textarea:disabled {
   border: 1px solid var(--rule);
   border-radius: 8px;
   background: var(--rule);
+}
+
+.language-toggle,
+.due-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.language-toggle button,
+.due-presets button {
+  min-height: 38px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 8px 11px;
+  background: var(--field);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.18;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.language-toggle button {
+  min-height: 40px;
+  flex: 1 1 180px;
+  color: var(--ink);
+}
+
+.language-toggle button.active,
+.due-presets button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 17%, var(--field));
+  color: var(--accent);
+}
+
+.language-toggle button:hover,
+.due-presets button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--rule));
+  color: var(--ink);
+}
+
+.language-toggle button:focus-visible,
+.due-presets button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(217, 255, 91, 0.14);
 }
 
 .field input {
@@ -563,12 +621,40 @@ textarea:disabled {
 
 .line-item {
   display: grid;
-  grid-template-columns: minmax(150px, 1.45fr) minmax(76px, 0.55fr) minmax(
+  grid-template-columns: minmax(150px, 1.35fr) minmax(70px, 0.45fr) minmax(
       90px,
-      0.85fr
-    ) 44px;
+      0.75fr
+    ) minmax(108px, 0.8fr) 44px;
   gap: 12px;
   align-items: end;
+}
+
+.line-amount {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.line-amount span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.line-amount strong {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--panel-soft) 74%, black);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .payment-advisory {
@@ -585,7 +671,7 @@ textarea:disabled {
 .payment-advisory span {
   color: var(--accent);
   font-size: 10px;
-  line-height: 1;
+  line-height: 1.25;
 }
 
 .payment-advisory strong {
@@ -593,6 +679,22 @@ textarea:disabled {
   font-size: 12px;
   font-weight: 400;
   line-height: 1.45;
+}
+
+.payment-advisory.warning {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--rule));
+}
+
+.payment-advisory.warning span {
+  color: var(--danger);
+}
+
+.payment-advisory.success {
+  border-color: color-mix(in srgb, var(--success) 32%, var(--rule));
+}
+
+.payment-advisory.success span {
+  color: var(--success);
 }
 
 .preview-panel {
@@ -696,9 +798,14 @@ textarea:disabled {
   right: 38px;
   top: 151px;
   display: grid;
-  grid-template-columns: 158px 158px 170px;
-  justify-content: space-between;
-  font-size: 11.2px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  font-size: 10.7px;
+  line-height: 1.45;
+}
+
+.preview-meta .preview-muted {
+  display: block;
 }
 
 .preview-meta-right {

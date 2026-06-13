@@ -18,16 +18,32 @@ import { useMemo, useState } from "react";
 import { InvoicePreview } from "./InvoicePreview";
 import PdfDownloadButton from "./PdfDownloadButton";
 import {
-  defaultInvoice,
+  addDaysToInputDate,
+  bicCheck,
+  countryDisplayName,
+  createDefaultInvoice,
+  DUE_DATE_PRESETS,
+  duePresetLabel,
   EUROPEAN_TAX_COUNTRIES,
+  formatBicValidation,
   formatCurrency,
   formatIban,
+  formatIbanValidation,
   formatRate,
+  getAppCopy,
+  getInvoiceCopy,
   getTaxCountry,
-  ibanHint,
+  ibanCheck,
+  invoiceWithCountryExamples,
   invoiceSubtotal,
   invoiceWithResolvedTotal,
+  lineItemAmount,
+  normalizeBic,
+  paymentTermsForDueDate,
+  paymentRailLabel,
+  type AppCopy,
   type InvoiceData,
+  type InvoiceLanguageMode,
   type LineItem,
   type Party,
   type PaymentDetails,
@@ -41,6 +57,7 @@ type FieldProps = {
   min?: string;
   step?: string;
   disabled?: boolean;
+  placeholder?: string;
 };
 
 const fieldIcon = {
@@ -59,11 +76,13 @@ const Field = ({
   min,
   step,
   disabled = false,
+  placeholder,
 }: FieldProps) => (
   <label className="field">
     <span>{label}</span>
     <input
       min={min}
+      placeholder={placeholder}
       step={step}
       type={type}
       value={value}
@@ -76,20 +95,29 @@ const Field = ({
 const SelectField = ({
   label,
   value,
+  displayCountryCode,
+  languageMode,
   onChange,
 }: {
+  displayCountryCode: string;
   label: string;
+  languageMode: InvoiceLanguageMode;
   value: string;
   onChange: (value: string) => void;
 }) => (
   <label className="field">
     <span>{label}</span>
     <select value={value} onChange={(event) => onChange(event.target.value)}>
-      {EUROPEAN_TAX_COUNTRIES.map((country) => (
-        <option key={country.code} value={country.code}>
-          {country.name} · {country.taxName} {formatRate(country.rate)}
-        </option>
-      ))}
+      {EUROPEAN_TAX_COUNTRIES.map((country) => {
+        const optionCopy = getInvoiceCopy(country.code, languageMode);
+
+        return (
+          <option key={country.code} value={country.code}>
+            {countryDisplayName(country.code, displayCountryCode, languageMode)} ·{" "}
+            {optionCopy.taxName} {formatRate(country.rate)}
+          </option>
+        );
+      })}
     </select>
   </label>
 );
@@ -121,7 +149,9 @@ const createLineItem = (): LineItem => ({
 const MAX_LOGO_BYTES = 4 * 1024 * 1024;
 
 export default function App() {
-  const [invoice, setInvoice] = useState<InvoiceData>(defaultInvoice);
+  const [invoice, setInvoice] = useState<InvoiceData>(() =>
+    createDefaultInvoice(),
+  );
   const [logoError, setLogoError] = useState("");
   const pdfInvoice = useMemo(() => invoiceWithResolvedTotal(invoice), [invoice]);
   const subtotal = useMemo(() => invoiceSubtotal(invoice), [invoice]);
@@ -129,9 +159,48 @@ export default function App() {
     () => getTaxCountry(invoice.taxCountryCode),
     [invoice.taxCountryCode],
   );
-  const paymentHint = useMemo(
-    () => ibanHint(invoice.payment.iban, invoice.taxCountryCode),
+  const invoiceCopy = useMemo(
+    () => getInvoiceCopy(invoice.taxCountryCode, invoice.languageMode),
+    [invoice.languageMode, invoice.taxCountryCode],
+  );
+  const appCopy = useMemo(
+    () => getAppCopy(invoice.taxCountryCode, invoice.languageMode),
+    [invoice.languageMode, invoice.taxCountryCode],
+  );
+  const currentCountryName = useMemo(
+    () =>
+      countryDisplayName(
+        invoice.taxCountryCode,
+        invoice.taxCountryCode,
+        invoice.languageMode,
+      ),
+    [invoice.languageMode, invoice.taxCountryCode],
+  );
+  const ibanValidation = useMemo(
+    () => ibanCheck(invoice.payment.iban, invoice.taxCountryCode),
     [invoice.payment.iban, invoice.taxCountryCode],
+  );
+  const bicValidation = useMemo(
+    () => bicCheck(invoice.payment.bic),
+    [invoice.payment.bic],
+  );
+  const ibanValidationMessage = useMemo(
+    () =>
+      formatIbanValidation(
+        ibanValidation,
+        invoice.taxCountryCode,
+        invoice.languageMode,
+      ),
+    [ibanValidation, invoice.languageMode, invoice.taxCountryCode],
+  );
+  const bicValidationMessage = useMemo(
+    () =>
+      formatBicValidation(
+        bicValidation,
+        invoice.taxCountryCode,
+        invoice.languageMode,
+      ),
+    [bicValidation, invoice.languageMode, invoice.taxCountryCode],
   );
 
   const updateInvoice = <Key extends keyof InvoiceData>(
@@ -166,6 +235,57 @@ export default function App() {
         [key]: value,
       },
     }));
+  };
+
+  const updateLanguageMode = (mode: InvoiceLanguageMode) => {
+    setInvoice((current) => {
+      const previousTerms = paymentTermsForDueDate(
+        current.dueDate,
+        current.taxCountryCode,
+        current.languageMode,
+      );
+      const nextTerms = paymentTermsForDueDate(
+        current.dueDate,
+        current.taxCountryCode,
+        mode,
+      );
+
+      return {
+        ...current,
+        languageMode: mode,
+        payment: {
+          ...current.payment,
+          terms:
+            current.payment.terms === previousTerms
+              ? nextTerms
+              : current.payment.terms,
+        },
+      };
+    });
+  };
+
+  const updateTaxCountry = (countryCode: string) => {
+    setInvoice((current) => invoiceWithCountryExamples(current, countryCode));
+  };
+
+  const applyDuePreset = (days: number) => {
+    setInvoice((current) => {
+      const issueDate = current.issueDate || addDaysToInputDate("", 0);
+      const dueDate = addDaysToInputDate(issueDate, days);
+
+      return {
+        ...current,
+        dueDate,
+        payment: {
+          ...current.payment,
+          terms: paymentTermsForDueDate(
+            dueDate,
+            current.taxCountryCode,
+            current.languageMode,
+          ),
+        },
+      };
+    });
   };
 
   const updateItem = (
@@ -209,12 +329,12 @@ export default function App() {
     }
 
     if (!["image/png", "image/jpeg"].includes(file.type)) {
-      setLogoError("Use a PNG or JPG logo.");
+      setLogoError(appCopy.logoTypeError);
       return;
     }
 
     if (file.size > MAX_LOGO_BYTES) {
-      setLogoError("Keep the logo under 4 MB.");
+      setLogoError(appCopy.logoSizeError);
       return;
     }
 
@@ -234,7 +354,7 @@ export default function App() {
         const context = canvas.getContext("2d");
 
         if (!context) {
-          setLogoError("That logo could not be prepared.");
+          setLogoError(appCopy.logoPrepError);
           return;
         }
 
@@ -250,10 +370,10 @@ export default function App() {
         }));
       };
 
-      image.onerror = () => setLogoError("That logo could not be read.");
+      image.onerror = () => setLogoError(appCopy.logoReadError);
       image.src = result;
     };
-    reader.onerror = () => setLogoError("That logo could not be read.");
+    reader.onerror = () => setLogoError(appCopy.logoReadError);
     reader.readAsDataURL(file);
   };
 
@@ -267,30 +387,33 @@ export default function App() {
   };
 
   return (
-    <main className="app-shell">
-      <section className="control-panel" aria-label="Invoice editor">
+    <main
+      className="app-shell"
+      lang={invoice.languageMode === "local" ? taxCountry.locale : "en"}
+    >
+      <section className="control-panel" aria-label={appCopy.invoiceEditor}>
         <header className="app-header">
           <div>
             <p className="eyebrow">BLACK INVOICES</p>
-            <h1>Invoice generator</h1>
+            <h1>{appCopy.generatorTitle}</h1>
           </div>
           <button
             className="icon-button"
             type="button"
             onClick={() => {
               setLogoError("");
-              setInvoice(defaultInvoice);
+              setInvoice(createDefaultInvoice());
             }}
-            aria-label="Reset invoice"
-            title="Reset invoice"
+            aria-label={appCopy.resetInvoice}
+            title={appCopy.resetInvoice}
           >
             <RefreshCcw size={17} aria-hidden="true" />
           </button>
         </header>
 
-        <div className="summary-strip" aria-label="Invoice summary">
+        <div className="summary-strip" aria-label={appCopy.invoiceSummary}>
           <div>
-            <span>Currency</span>
+            <span>{appCopy.currency}</span>
             <strong>EUR / €</strong>
           </div>
           <div>
@@ -305,7 +428,7 @@ export default function App() {
             </strong>
           </div>
           <div>
-            <span>Total</span>
+            <span>{invoiceCopy.total}</span>
             <strong>
               {formatCurrency(pdfInvoice.total, {
                 countryCode: invoice.taxCountryCode,
@@ -317,7 +440,7 @@ export default function App() {
 
         <div className="form-stack">
           <section className="form-section">
-            <SectionTitle icon="invoice" title="Document" />
+            <SectionTitle icon="invoice" title={appCopy.document} />
             <div className="logo-uploader">
               <div className="logo-swatch">
                 {invoice.logoDataUrl ? (
@@ -329,11 +452,11 @@ export default function App() {
               <div className="logo-actions">
                 <div className="logo-meta">
                   <ImageIcon size={15} aria-hidden="true" />
-                  <span>Logo tile</span>
+                  <span>{appCopy.logoTile}</span>
                 </div>
                 <label className="upload-button">
                   <Upload size={15} aria-hidden="true" />
-                  Upload logo
+                  {appCopy.uploadLogo}
                   <input
                     accept="image/png,image/jpeg"
                     type="file"
@@ -348,31 +471,33 @@ export default function App() {
                     className="text-button"
                     type="button"
                     onClick={clearLogo}
-                    aria-label="Remove uploaded logo"
-                    title="Remove uploaded logo"
+                    aria-label={appCopy.removeUploadedLogo}
+                    title={appCopy.removeUploadedLogo}
                   >
                     <X size={14} aria-hidden="true" />
-                    Remove
+                    {appCopy.remove}
                   </button>
                 ) : null}
                 <p className={logoError ? "logo-error" : undefined}>
                   {logoError ||
                     invoice.logoFileName ||
-                    "PNG or JPG, placed in the invoice mark."}
+                    appCopy.logoHint}
                 </p>
               </div>
             </div>
             <div className="field-grid two">
               <Field
-                label="Fallback mark"
+                label={appCopy.fallbackMark}
                 value={invoice.logoLetter}
+                placeholder="L"
                 onChange={(value) =>
                   updateInvoice("logoLetter", value.slice(0, 1).toUpperCase())
                 }
               />
               <Field
-                label="Invoice No."
+                label={invoiceCopy.invoiceNo}
                 value={invoice.invoiceNo}
+                placeholder="INV-2026-001"
                 onChange={(value) =>
                   setInvoice((current) => ({
                     ...current,
@@ -390,17 +515,41 @@ export default function App() {
             </div>
             <div className="field-grid two">
               <Field
-                label="Issue date"
+                label={invoiceCopy.issueDate}
                 type="date"
                 value={invoice.issueDate}
                 onChange={(value) => updateInvoice("issueDate", value)}
               />
               <Field
-                label="Due date"
+                label={invoiceCopy.dueDate}
                 type="date"
                 value={invoice.dueDate}
                 onChange={(value) => updateInvoice("dueDate", value)}
               />
+            </div>
+            <div className="due-presets" aria-label={appCopy.dueDateShortcuts}>
+              {DUE_DATE_PRESETS.map((preset) => {
+                const expectedDate = addDaysToInputDate(
+                  invoice.issueDate || addDaysToInputDate("", 0),
+                  preset.days,
+                );
+
+                return (
+                  <button
+                    className={invoice.dueDate === expectedDate ? "active" : ""}
+                    key={preset.days}
+                    type="button"
+                    onClick={() => applyDuePreset(preset.days)}
+                    aria-pressed={invoice.dueDate === expectedDate}
+                  >
+                    {duePresetLabel(
+                      preset.days,
+                      invoice.taxCountryCode,
+                      invoice.languageMode,
+                    )}
+                  </button>
+                );
+              })}
             </div>
             <div className="total-strip">
               <label className="switch">
@@ -412,10 +561,10 @@ export default function App() {
                   }
                 />
                 <span aria-hidden="true" />
-                Auto total
+                {appCopy.autoTotal}
               </label>
               <Field
-                label="Total (€)"
+                label={appCopy.totalEuro}
                 type="number"
                 min="0"
                 step="0.01"
@@ -427,25 +576,49 @@ export default function App() {
           </section>
 
           <section className="form-section">
-            <SectionTitle icon="currency" title="VAT setup" />
+            <SectionTitle icon="currency" title={appCopy.vatSetup} />
             <SelectField
-              label="Tax country"
+              displayCountryCode={invoice.taxCountryCode}
+              label={appCopy.taxCountry}
+              languageMode={invoice.languageMode}
               value={invoice.taxCountryCode}
-              onChange={(value) => updateInvoice("taxCountryCode", value)}
+              onChange={updateTaxCountry}
             />
+            <div
+              className="language-toggle"
+              role="group"
+              aria-label={appCopy.invoiceLanguage}
+            >
+              <button
+                className={invoice.languageMode === "english" ? "active" : ""}
+                type="button"
+                aria-pressed={invoice.languageMode === "english"}
+                onClick={() => updateLanguageMode("english")}
+              >
+                {appCopy.englishInvoice}
+              </button>
+              <button
+                className={invoice.languageMode === "local" ? "active" : ""}
+                type="button"
+                aria-pressed={invoice.languageMode === "local"}
+                onClick={() => updateLanguageMode("local")}
+              >
+                {appCopy.localInvoice(taxCountry.localLanguageName)}
+              </button>
+            </div>
             <div className="currency-panel">
               <div>
-                <span>Country</span>
-                <strong>{taxCountry.name}</strong>
+                <span>{appCopy.country}</span>
+                <strong>{currentCountryName}</strong>
               </div>
               <div>
-                <span>Rate</span>
+                <span>{appCopy.rate}</span>
                 <strong>
-                  {taxCountry.taxName} {formatRate(taxCountry.rate)}
+                  {invoiceCopy.taxName} {formatRate(taxCountry.rate)}
                 </strong>
               </div>
               <div>
-                <span>Tax basis</span>
+                <span>{appCopy.taxBasis}</span>
                 <strong>
                   {formatCurrency(subtotal, {
                     countryCode: invoice.taxCountryCode,
@@ -454,7 +627,7 @@ export default function App() {
                 </strong>
               </div>
               <div>
-                <span>Tax</span>
+                <span>{appCopy.tax}</span>
                 <strong>
                   {formatCurrency(pdfInvoice.salesTax, {
                     countryCode: invoice.taxCountryCode,
@@ -463,38 +636,54 @@ export default function App() {
                 </strong>
               </div>
               <div>
-                <span>Payment rail</span>
-                <strong>{taxCountry.paymentRail}</strong>
-              </div>
-              <div>
-                <span>IBAN format</span>
+                <span>{appCopy.paymentRail}</span>
                 <strong>
-                  {taxCountry.ibanLength
-                    ? `${taxCountry.code} · ${taxCountry.ibanLength} chars`
-                    : "Local + SWIFT"}
+                  {paymentRailLabel(invoice.taxCountryCode, invoice.languageMode)}
                 </strong>
               </div>
               <div>
-                <span>Tax ID label</span>
-                <strong>{taxCountry.taxIdLabel}</strong>
+                <span>{appCopy.ibanFormat}</span>
+                <strong>
+                  {taxCountry.ibanLength
+                    ? `${taxCountry.code} · ${appCopy.ibanChars(
+                        taxCountry.ibanLength,
+                      )}`
+                    : appCopy.localSwift}
+                </strong>
+              </div>
+              <div>
+                <span>{appCopy.taxIdLabel}</span>
+                <strong>{invoiceCopy.taxId}</strong>
+              </div>
+              <div>
+                <span>{appCopy.invoiceLanguage}</span>
+                <strong>
+                  {invoice.languageMode === "english"
+                    ? appCopy.english
+                    : taxCountry.localLanguageName}
+                </strong>
               </div>
             </div>
           </section>
 
           <section className="form-section">
-            <SectionTitle icon="party" title="From" />
+            <SectionTitle icon="party" title={invoiceCopy.from} />
             <PartyFields
-              taxIdLabel={taxCountry.taxIdLabel}
+              appCopy={appCopy}
+              taxIdLabel={invoiceCopy.taxId}
               party={invoice.from}
+              placeholders={taxCountry.examples.from}
               onChange={(key, value) => updateParty("from", key, value)}
             />
           </section>
 
           <section className="form-section">
-            <SectionTitle icon="party" title="To" />
+            <SectionTitle icon="party" title={invoiceCopy.to} />
             <PartyFields
-              taxIdLabel={taxCountry.taxIdLabel}
+              appCopy={appCopy}
+              taxIdLabel={invoiceCopy.taxId}
               party={invoice.to}
+              placeholders={taxCountry.examples.to}
               onChange={(key, value) => updateParty("to", key, value)}
             />
           </section>
@@ -503,14 +692,14 @@ export default function App() {
             <div className="section-title with-action">
               <div>
                 <Copy aria-hidden="true" size={16} />
-                <h2>Line items</h2>
+                <h2>{appCopy.lineItems}</h2>
               </div>
               <button
                 className="mini-button"
                 type="button"
                 onClick={addItem}
-                aria-label="Add line item"
-                title="Add line item"
+                aria-label={appCopy.addLineItem}
+                title={appCopy.addLineItem}
               >
                 <Plus size={15} aria-hidden="true" />
               </button>
@@ -520,31 +709,43 @@ export default function App() {
               {invoice.items.map((item) => (
                 <div className="line-item" key={item.id}>
                   <Field
-                    label="Item"
+                    label={invoiceCopy.item}
                     value={item.item}
+                    placeholder={taxCountry.examples.item.item}
                     onChange={(value) => updateItem(item.id, "item", value)}
                   />
                   <Field
-                    label="Qty"
+                    label={invoiceCopy.quantity}
                     value={item.quantity}
+                    placeholder={taxCountry.examples.item.quantity}
                     onChange={(value) =>
                       updateItem(item.id, "quantity", value)
                     }
                   />
                   <Field
-                    label="Unit price"
+                    label={invoiceCopy.unitPrice}
                     type="number"
                     min="0"
                     step="0.01"
                     value={item.price}
+                    placeholder={`${taxCountry.examples.item.price}`}
                     onChange={(value) => updateItem(item.id, "price", value)}
                   />
+                  <div className="line-amount">
+                    <span>{appCopy.amount}</span>
+                    <strong>
+                      {formatCurrency(lineItemAmount(item), {
+                        countryCode: invoice.taxCountryCode,
+                        decimals: 2,
+                      })}
+                    </strong>
+                  </div>
                   <button
                     className="icon-button danger"
                     type="button"
                     onClick={() => removeItem(item.id)}
-                    aria-label="Remove line item"
-                    title="Remove line item"
+                    aria-label={appCopy.remove}
+                    title={appCopy.remove}
                     disabled={invoice.items.length === 1}
                   >
                     <Trash2 size={16} aria-hidden="true" />
@@ -555,51 +756,65 @@ export default function App() {
           </section>
 
           <section className="form-section">
-            <SectionTitle icon="payment" title="Payment" />
+            <SectionTitle icon="payment" title={appCopy.payment} />
             <div className="field-grid two">
               <Field
-                label="Beneficiary"
+                label={invoiceCopy.beneficiary}
                 value={invoice.payment.beneficiary}
+                placeholder={taxCountry.examples.payment.beneficiary}
                 onChange={(value) => updatePayment("beneficiary", value)}
               />
               <Field
-                label="Bank"
+                label={invoiceCopy.bank}
                 value={invoice.payment.bank}
+                placeholder={taxCountry.examples.payment.bank}
                 onChange={(value) => updatePayment("bank", value)}
               />
             </div>
             <div className="field-grid two">
               <Field
-                label="BIC / SWIFT"
+                label={appCopy.bicSwift}
                 value={invoice.payment.bic}
+                placeholder={taxCountry.examples.payment.bic}
                 onChange={(value) =>
-                  updatePayment("bic", value.toUpperCase().replace(/\s/g, ""))
+                  updatePayment("bic", normalizeBic(value))
                 }
               />
               <Field
-                label="Payment reference"
+                label={appCopy.paymentReference}
                 value={invoice.payment.reference}
+                placeholder={invoice.invoiceNo}
                 onChange={(value) => updatePayment("reference", value)}
               />
             </div>
             <Field
               label="IBAN"
               value={invoice.payment.iban}
+              placeholder={taxCountry.examples.payment.iban}
               onChange={(value) => updatePayment("iban", formatIban(value))}
             />
-            <div className="payment-advisory">
-              <span>{taxCountry.paymentRail}</span>
-              <strong>{paymentHint}</strong>
+            <div className={`payment-advisory ${ibanValidation.tone}`}>
+              <span>
+                {paymentRailLabel(invoice.taxCountryCode, invoice.languageMode)}
+              </span>
+              <strong>{ibanValidationMessage}</strong>
+              <strong>{bicValidationMessage}</strong>
             </div>
             <Field
-              label="Payment terms"
+              label={appCopy.paymentTerms}
               value={invoice.payment.terms}
+              placeholder={paymentTermsForDueDate(
+                invoice.dueDate,
+                invoice.taxCountryCode,
+                invoice.languageMode,
+              )}
               onChange={(value) => updatePayment("terms", value)}
             />
             <label className="field">
-              <span>Note</span>
+              <span>{invoiceCopy.note}</span>
               <textarea
                 value={invoice.note}
+                placeholder={taxCountry.examples.note}
                 onChange={(event) => updateInvoice("note", event.target.value)}
               />
             </label>
@@ -607,13 +822,17 @@ export default function App() {
         </div>
       </section>
 
-      <section className="preview-panel" aria-label="Invoice preview">
+      <section className="preview-panel" aria-label={appCopy.invoicePreview}>
         <div className="preview-toolbar">
           <div>
-            <p className="eyebrow">A4 / Geist Mono / EUR</p>
-            <h2>{invoice.invoiceNo || "Untitled invoice"}</h2>
+            <p className="eyebrow">{appCopy.previewTech}</p>
+            <h2>{invoice.invoiceNo || appCopy.untitledInvoice}</h2>
           </div>
-          <PdfDownloadButton data={pdfInvoice} />
+          <PdfDownloadButton
+            data={pdfInvoice}
+            downloadLabel={appCopy.downloadPdf}
+            renderingLabel={appCopy.rendering}
+          />
         </div>
 
         <InvoicePreview data={invoice} />
@@ -623,48 +842,58 @@ export default function App() {
 }
 
 const PartyFields = ({
+  appCopy,
   party,
+  placeholders,
   taxIdLabel,
   onChange,
 }: {
+  appCopy: AppCopy;
   party: Party;
+  placeholders: Party;
   taxIdLabel: string;
   onChange: (key: keyof Party, value: string) => void;
 }) => (
   <>
     <div className="field-grid two">
       <Field
-        label="Name"
+        label={appCopy.name}
         value={party.name}
+        placeholder={placeholders.name}
         onChange={(value) => onChange("name", value)}
       />
       <Field
-        label="Email"
+        label={appCopy.email}
         type="email"
         value={party.email}
+        placeholder={placeholders.email}
         onChange={(value) => onChange("email", value)}
       />
     </div>
     <div className="field-grid two">
       <Field
-        label="Phone"
+        label={appCopy.phone}
         value={party.phone}
+        placeholder={placeholders.phone}
         onChange={(value) => onChange("phone", value)}
       />
       <Field
         label={taxIdLabel}
         value={party.vatId}
+        placeholder={placeholders.vatId}
         onChange={(value) => onChange("vatId", value)}
       />
     </div>
     <Field
-      label="Street"
+      label={appCopy.street}
       value={party.address}
+      placeholder={placeholders.address}
       onChange={(value) => onChange("address", value)}
     />
     <Field
-      label="City / country"
+      label={appCopy.cityCountry}
       value={party.cityLine}
+      placeholder={placeholders.cityLine}
       onChange={(value) => onChange("cityLine", value)}
     />
   </>

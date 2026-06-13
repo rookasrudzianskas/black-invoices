@@ -8,10 +8,12 @@ import {
 } from "@react-pdf/renderer";
 import path from "node:path";
 import {
+  displayValue,
   formatCurrency,
   formatDate,
   formatIban,
   formatRate,
+  getInvoiceCopy,
   getTaxCountry,
   invoiceSubtotal,
   invoiceWithResolvedTotal,
@@ -27,6 +29,22 @@ const geistMonoBold = path.join(
   process.cwd(),
   "public/fonts/GeistMono-Bold.ttf",
 );
+const notoSansMonoGreek = path.join(
+  process.cwd(),
+  "node_modules/@fontsource/noto-sans-mono/files/noto-sans-mono-greek-400-normal.woff",
+);
+const notoSansMonoCyrillic = path.join(
+  process.cwd(),
+  "node_modules/@fontsource/noto-sans-mono/files/noto-sans-mono-cyrillic-400-normal.woff",
+);
+const notoSansArmenian = path.join(
+  process.cwd(),
+  "node_modules/@fontsource/noto-sans-armenian/files/noto-sans-armenian-armenian-400-normal.woff",
+);
+const notoSansGeorgian = path.join(
+  process.cwd(),
+  "node_modules/@fontsource/noto-sans-georgian/files/noto-sans-georgian-georgian-400-normal.woff",
+);
 
 Font.register({
   family: "GeistMono",
@@ -35,6 +53,10 @@ Font.register({
     { src: geistMonoBold, fontWeight: 700 },
   ],
 });
+Font.register({ family: "NotoSansMonoGreek", src: notoSansMonoGreek });
+Font.register({ family: "NotoSansMonoCyrillic", src: notoSansMonoCyrillic });
+Font.register({ family: "NotoSansArmenian", src: notoSansArmenian });
+Font.register({ family: "NotoSansGeorgian", src: notoSansGeorgian });
 
 type InvoicePdfProps = {
   data: InvoiceData;
@@ -51,20 +73,62 @@ const PartyBlock = ({
 }) => (
   <View style={styles.partyBlock}>
     <Text style={styles.label}>{title}</Text>
-    <Text style={styles.line}>{party.name}</Text>
-    <Text style={styles.line}>{party.email}</Text>
-    <Text style={styles.line}>{party.phone}</Text>
-    <Text style={styles.line}>{party.address}</Text>
-    <Text style={styles.line}>{party.cityLine}</Text>
+    <Text style={styles.line}>{displayValue(party.name)}</Text>
+    <Text style={styles.line}>{displayValue(party.email)}</Text>
+    <Text style={styles.line}>{displayValue(party.phone)}</Text>
+    <Text style={styles.line}>{displayValue(party.address)}</Text>
+    <Text style={styles.line}>{displayValue(party.cityLine)}</Text>
     <Text style={styles.line}>
-      {taxIdLabel}: {party.vatId}
+      {taxIdLabel}: {displayValue(party.vatId)}
     </Text>
   </View>
 );
 
+const MetaItem = ({
+  label,
+  value,
+  align = "left",
+}: {
+  align?: "left" | "right";
+  label: string;
+  value: string;
+}) => (
+  <View
+    style={align === "right" ? [styles.metaItem, styles.metaRight] : styles.metaItem}
+  >
+    <Text style={styles.muted}>{label}</Text>
+    <Text style={styles.line}>{displayValue(value)}</Text>
+  </View>
+);
+
+const invoiceFontFamily = (invoice: InvoiceData) => {
+  if (invoice.languageMode !== "local") {
+    return "GeistMono";
+  }
+
+  if (["CY", "GR"].includes(invoice.taxCountryCode)) {
+    return "NotoSansMonoGreek";
+  }
+
+  if (["BG", "BY", "MK", "RU", "UA"].includes(invoice.taxCountryCode)) {
+    return "NotoSansMonoCyrillic";
+  }
+
+  if (invoice.taxCountryCode === "AM") {
+    return "NotoSansArmenian";
+  }
+
+  if (invoice.taxCountryCode === "GE") {
+    return "NotoSansGeorgian";
+  }
+
+  return "GeistMono";
+};
+
 export const InvoicePdf = ({ data }: InvoicePdfProps) => {
   const invoice = invoiceWithResolvedTotal(data);
   const taxCountry = getTaxCountry(invoice.taxCountryCode);
+  const copy = getInvoiceCopy(invoice.taxCountryCode, invoice.languageMode);
   const subtotal = invoiceSubtotal(invoice);
 
   return (
@@ -75,7 +139,10 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
       subject={`Invoice ${invoice.invoiceNo}`}
       title={`Invoice ${invoice.invoiceNo}`}
     >
-      <Page size="A4" style={styles.page}>
+      <Page
+        size="A4"
+        style={[styles.page, { fontFamily: invoiceFontFamily(invoice) }]}
+      >
         <View style={styles.logo}>
           {!invoice.logoDataUrl ? (
             <Text style={styles.logoText}>{invoice.logoLetter || "L"}</Text>
@@ -83,46 +150,50 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
         </View>
 
         <View style={styles.metaRow}>
-          <Text style={styles.metaItem}>
-            <Text style={styles.muted}>Invoice NO: </Text>
-            {invoice.invoiceNo}
-          </Text>
-          <Text style={styles.metaItem}>
-            <Text style={styles.muted}>Issue date: </Text>
-            {formatDate(invoice.issueDate, invoice.taxCountryCode)}
-          </Text>
-          <Text style={[styles.metaItem, styles.metaRight]}>
-            <Text style={styles.muted}>Due date: </Text>
-            {formatDate(invoice.dueDate, invoice.taxCountryCode)}
-          </Text>
+          <MetaItem label={copy.invoiceNo} value={invoice.invoiceNo} />
+          <MetaItem
+            label={copy.issueDate}
+            value={formatDate(invoice.issueDate, invoice.taxCountryCode)}
+          />
+          <MetaItem
+            align="right"
+            label={copy.dueDate}
+            value={formatDate(invoice.dueDate, invoice.taxCountryCode)}
+          />
         </View>
 
         <View style={styles.fromBlock}>
           <PartyBlock
-            taxIdLabel={taxCountry.taxIdLabel}
-            title="From"
+            taxIdLabel={copy.taxId}
+            title={copy.from}
             party={invoice.from}
           />
         </View>
         <View style={styles.toBlock}>
           <PartyBlock
-            taxIdLabel={taxCountry.taxIdLabel}
-            title="To"
+            taxIdLabel={copy.taxId}
+            title={copy.to}
             party={invoice.to}
           />
         </View>
 
         <View style={styles.items}>
           <View style={styles.itemHeader}>
-            <Text style={[styles.label, styles.itemName]}>Item</Text>
-            <Text style={[styles.label, styles.itemQuantity]}>Qty</Text>
-            <Text style={[styles.label, styles.itemPrice]}>Unit price</Text>
+            <Text style={[styles.label, styles.itemName]}>{copy.item}</Text>
+            <Text style={[styles.label, styles.itemQuantity]}>
+              {copy.quantity}
+            </Text>
+            <Text style={[styles.label, styles.itemPrice]}>
+              {copy.unitPrice}
+            </Text>
           </View>
           {invoice.items.map((item) => (
             <View key={item.id} style={styles.itemRow}>
-              <Text style={[styles.line, styles.itemName]}>{item.item}</Text>
+              <Text style={[styles.line, styles.itemName]}>
+                {displayValue(item.item)}
+              </Text>
               <Text style={[styles.line, styles.itemQuantity]}>
-                {item.quantity}
+                {displayValue(item.quantity)}
               </Text>
               <Text style={[styles.line, styles.itemPrice]}>
                 {formatCurrency(item.price, {
@@ -136,7 +207,7 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
 
         <View style={styles.totals}>
           <View style={styles.taxRow}>
-            <Text style={styles.label}>Subtotal</Text>
+            <Text style={styles.label}>{copy.subtotal}</Text>
             <Text style={styles.taxValue}>
               {formatCurrency(subtotal, {
                 countryCode: invoice.taxCountryCode,
@@ -146,7 +217,7 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
           </View>
           <View style={styles.taxRow}>
             <Text style={styles.label}>
-              {taxCountry.taxName} {formatRate(taxCountry.rate)}
+              {copy.taxName} {formatRate(taxCountry.rate)}
             </Text>
             <Text style={styles.taxValue}>
               {formatCurrency(invoice.salesTax, {
@@ -158,7 +229,7 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
           </View>
           <View style={styles.divider} />
           <View style={styles.totalRow}>
-            <Text style={styles.label}>Total</Text>
+            <Text style={styles.label}>{copy.total}</Text>
             <Text style={styles.totalValue}>
               {formatCurrency(invoice.total, {
                 countryCode: invoice.taxCountryCode,
@@ -170,22 +241,28 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
         </View>
 
         <View style={styles.payment}>
-          <Text style={styles.label}>Payment details</Text>
+          <Text style={styles.label}>{copy.paymentDetails}</Text>
           <Text style={styles.line}>
-            Beneficiary: {invoice.payment.beneficiary}
+            {copy.beneficiary}: {displayValue(invoice.payment.beneficiary)}
           </Text>
-          <Text style={styles.line}>Bank: {invoice.payment.bank}</Text>
-          <Text style={styles.line}>IBAN: {formatIban(invoice.payment.iban)}</Text>
           <Text style={styles.line}>
-            BIC/SWIFT: {invoice.payment.bic}
+            {copy.bank}: {displayValue(invoice.payment.bank)}
           </Text>
-          <Text style={styles.line}>Reference: {invoice.payment.reference}</Text>
-          <Text style={styles.line}>{invoice.payment.terms}</Text>
+          <Text style={styles.line}>
+            IBAN: {displayValue(formatIban(invoice.payment.iban))}
+          </Text>
+          <Text style={styles.line}>
+            BIC/SWIFT: {displayValue(invoice.payment.bic)}
+          </Text>
+          <Text style={styles.line}>
+            {copy.reference}: {displayValue(invoice.payment.reference)}
+          </Text>
+          <Text style={styles.line}>{displayValue(invoice.payment.terms)}</Text>
         </View>
 
         <View style={styles.note}>
-          <Text style={styles.label}>Note</Text>
-          <Text style={styles.line}>{invoice.note}</Text>
+          <Text style={styles.label}>{copy.note}</Text>
+          <Text style={styles.line}>{displayValue(invoice.note)}</Text>
         </View>
       </Page>
     </Document>
@@ -219,6 +296,7 @@ const styles = StyleSheet.create({
   },
   logoText: {
     color: colors.paper,
+    fontFamily: "GeistMono",
     fontSize: 42,
     fontWeight: 700,
     lineHeight: 1,

@@ -6,9 +6,15 @@ import { safeFileName, type InvoiceData } from "./invoice";
 
 type PdfDownloadButtonProps = {
   data: InvoiceData;
+  downloadLabel: string;
+  renderingLabel: string;
 };
 
-export default function PdfDownloadButton({ data }: PdfDownloadButtonProps) {
+export default function PdfDownloadButton({
+  data,
+  downloadLabel,
+  renderingLabel,
+}: PdfDownloadButtonProps) {
   const [isRendering, setIsRendering] = useState(false);
   const downloadPdf = async () => {
     setIsRendering(true);
@@ -41,7 +47,7 @@ export default function PdfDownloadButton({ data }: PdfDownloadButtonProps) {
         aria-busy={isRendering}
       >
         <ArrowDownToLine size={17} aria-hidden="true" />
-        {isRendering ? "Rendering" : "Download PDF"}
+        {isRendering ? renderingLabel : downloadLabel}
       </button>
       <span className="download-filename" aria-live="polite">
         {safeFileName(data.invoiceNo)}
