@@ -176,6 +176,7 @@ export default function App() {
       ),
     [invoice.languageMode, invoice.taxCountryCode],
   );
+  const taxRateLabel = invoice.taxEnabled ? formatRate(taxCountry.rate) : "0%";
   const ibanValidation = useMemo(
     () => ibanCheck(invoice.payment.iban, invoice.taxCountryCode),
     [invoice.payment.iban, invoice.taxCountryCode],
@@ -418,7 +419,7 @@ export default function App() {
           </div>
           <div>
             <span>
-              {taxCountry.taxName} {formatRate(taxCountry.rate)}
+              {invoiceCopy.taxName} {taxRateLabel}
             </span>
             <strong>
               {formatCurrency(pdfInvoice.salesTax, {
@@ -584,6 +585,17 @@ export default function App() {
               value={invoice.taxCountryCode}
               onChange={updateTaxCountry}
             />
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={invoice.taxEnabled}
+                onChange={(event) =>
+                  updateInvoice("taxEnabled", event.target.checked)
+                }
+              />
+              <span aria-hidden="true" />
+              {invoiceCopy.taxName} {formatRate(taxCountry.rate)}
+            </label>
             <div
               className="language-toggle"
               role="group"
@@ -614,7 +626,7 @@ export default function App() {
               <div>
                 <span>{appCopy.rate}</span>
                 <strong>
-                  {invoiceCopy.taxName} {formatRate(taxCountry.rate)}
+                  {invoiceCopy.taxName} {taxRateLabel}
                 </strong>
               </div>
               <div>

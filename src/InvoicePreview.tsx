@@ -60,6 +60,7 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
     [invoice.languageMode, invoice.taxCountryCode],
   );
   const subtotal = useMemo(() => invoiceSubtotal(invoice), [invoice]);
+  const taxRate = invoice.taxEnabled ? taxCountry.rate : 0;
 
   useEffect(() => {
     const element = hostRef.current;
@@ -160,7 +161,7 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
             </div>
             <div className="preview-tax-row">
               <span className="preview-muted">
-                {copy.taxName} {formatRate(taxCountry.rate)}
+                {copy.taxName} {formatRate(taxRate)}
               </span>
               <span className="preview-muted">
                 {formatCurrency(invoice.salesTax, {

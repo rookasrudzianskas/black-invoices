@@ -130,6 +130,7 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
   const taxCountry = getTaxCountry(invoice.taxCountryCode);
   const copy = getInvoiceCopy(invoice.taxCountryCode, invoice.languageMode);
   const subtotal = invoiceSubtotal(invoice);
+  const taxRate = invoice.taxEnabled ? taxCountry.rate : 0;
 
   return (
     <Document
@@ -217,7 +218,7 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
           </View>
           <View style={styles.taxRow}>
             <Text style={styles.label}>
-              {copy.taxName} {formatRate(taxCountry.rate)}
+              {copy.taxName} {formatRate(taxRate)}
             </Text>
             <Text style={styles.taxValue}>
               {formatCurrency(invoice.salesTax, {

@@ -165,6 +165,7 @@ export type InvoiceData = {
   items: LineItem[];
   salesTax: number;
   total: number;
+  taxEnabled: boolean;
   autoTotal: boolean;
   payment: PaymentDetails;
   note: string;
@@ -4392,6 +4393,7 @@ export const createDefaultInvoice = (): InvoiceData => {
     ],
     salesTax: 0,
     total: 0,
+    taxEnabled: true,
     autoTotal: true,
     payment: {
       ...country.examples.payment,
@@ -4503,10 +4505,14 @@ export const lineItemAmount = (item: LineItem) => {
 export const invoiceWithResolvedTotal = (invoice: InvoiceData): InvoiceData => {
   const subtotal = invoiceSubtotal(invoice);
   const country = getTaxCountry(invoice.taxCountryCode);
-  const salesTax = roundMoney(subtotal * (country.rate / 100));
+  const taxEnabled = invoice.taxEnabled !== false;
+  const salesTax = taxEnabled
+    ? roundMoney(subtotal * (country.rate / 100))
+    : 0;
 
   return {
     ...invoice,
+    taxEnabled,
     salesTax,
     total: invoice.autoTotal ? roundMoney(subtotal + salesTax) : invoice.total,
   };
