@@ -47,7 +47,7 @@ const stampUploadedLogo = async (pdfBytes: Buffer, logoDataUrl: string) => {
         ? await document.embedPng(logo.bytes)
         : await document.embedJpg(logo.bytes);
 
-    const box = { left: 36, top: 45, size: 52 };
+    const box = { left: 48, top: 48, size: 46 };
     const scaled = image.scaleToFit(box.size, box.size);
     const x = box.left + (box.size - scaled.width) / 2;
     const y =

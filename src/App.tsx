@@ -21,8 +21,10 @@ import {
   defaultInvoice,
   EUROPEAN_TAX_COUNTRIES,
   formatCurrency,
+  formatIban,
   formatRate,
   getTaxCountry,
+  ibanHint,
   invoiceSubtotal,
   invoiceWithResolvedTotal,
   type InvoiceData,
@@ -126,6 +128,10 @@ export default function App() {
   const taxCountry = useMemo(
     () => getTaxCountry(invoice.taxCountryCode),
     [invoice.taxCountryCode],
+  );
+  const paymentHint = useMemo(
+    () => ibanHint(invoice.payment.iban, invoice.taxCountryCode),
+    [invoice.payment.iban, invoice.taxCountryCode],
   );
 
   const updateInvoice = <Key extends keyof InvoiceData>(
@@ -291,11 +297,21 @@ export default function App() {
             <span>
               {taxCountry.taxName} {formatRate(taxCountry.rate)}
             </span>
-            <strong>{formatCurrency(pdfInvoice.salesTax)}</strong>
+            <strong>
+              {formatCurrency(pdfInvoice.salesTax, {
+                countryCode: invoice.taxCountryCode,
+                decimals: 2,
+              })}
+            </strong>
           </div>
           <div>
             <span>Total</span>
-            <strong>{formatCurrency(pdfInvoice.total, { decimals: 2 })}</strong>
+            <strong>
+              {formatCurrency(pdfInvoice.total, {
+                countryCode: invoice.taxCountryCode,
+                decimals: 2,
+              })}
+            </strong>
           </div>
         </div>
 
@@ -357,7 +373,19 @@ export default function App() {
               <Field
                 label="Invoice No."
                 value={invoice.invoiceNo}
-                onChange={(value) => updateInvoice("invoiceNo", value)}
+                onChange={(value) =>
+                  setInvoice((current) => ({
+                    ...current,
+                    invoiceNo: value,
+                    payment: {
+                      ...current.payment,
+                      reference:
+                        current.payment.reference === current.invoiceNo
+                          ? value
+                          : current.payment.reference,
+                    },
+                  }))
+                }
               />
             </div>
             <div className="field-grid two">
@@ -418,11 +446,37 @@ export default function App() {
               </div>
               <div>
                 <span>Tax basis</span>
-                <strong>{formatCurrency(subtotal)}</strong>
+                <strong>
+                  {formatCurrency(subtotal, {
+                    countryCode: invoice.taxCountryCode,
+                    decimals: 2,
+                  })}
+                </strong>
               </div>
               <div>
                 <span>Tax</span>
-                <strong>{formatCurrency(pdfInvoice.salesTax)}</strong>
+                <strong>
+                  {formatCurrency(pdfInvoice.salesTax, {
+                    countryCode: invoice.taxCountryCode,
+                    decimals: 2,
+                  })}
+                </strong>
+              </div>
+              <div>
+                <span>Payment rail</span>
+                <strong>{taxCountry.paymentRail}</strong>
+              </div>
+              <div>
+                <span>IBAN format</span>
+                <strong>
+                  {taxCountry.ibanLength
+                    ? `${taxCountry.code} · ${taxCountry.ibanLength} chars`
+                    : "Local + SWIFT"}
+                </strong>
+              </div>
+              <div>
+                <span>Tax ID label</span>
+                <strong>{taxCountry.taxIdLabel}</strong>
               </div>
             </div>
           </section>
@@ -430,6 +484,7 @@ export default function App() {
           <section className="form-section">
             <SectionTitle icon="party" title="From" />
             <PartyFields
+              taxIdLabel={taxCountry.taxIdLabel}
               party={invoice.from}
               onChange={(key, value) => updateParty("from", key, value)}
             />
@@ -438,6 +493,7 @@ export default function App() {
           <section className="form-section">
             <SectionTitle icon="party" title="To" />
             <PartyFields
+              taxIdLabel={taxCountry.taxIdLabel}
               party={invoice.to}
               onChange={(key, value) => updateParty("to", key, value)}
             />
@@ -476,7 +532,7 @@ export default function App() {
                     }
                   />
                   <Field
-                    label="Price (€)"
+                    label="Unit price"
                     type="number"
                     min="0"
                     step="0.01"
@@ -502,20 +558,43 @@ export default function App() {
             <SectionTitle icon="payment" title="Payment" />
             <div className="field-grid two">
               <Field
+                label="Beneficiary"
+                value={invoice.payment.beneficiary}
+                onChange={(value) => updatePayment("beneficiary", value)}
+              />
+              <Field
                 label="Bank"
                 value={invoice.payment.bank}
                 onChange={(value) => updatePayment("bank", value)}
               />
+            </div>
+            <div className="field-grid two">
               <Field
-                label="Account"
-                value={invoice.payment.accountNumber}
-                onChange={(value) => updatePayment("accountNumber", value)}
+                label="BIC / SWIFT"
+                value={invoice.payment.bic}
+                onChange={(value) =>
+                  updatePayment("bic", value.toUpperCase().replace(/\s/g, ""))
+                }
+              />
+              <Field
+                label="Payment reference"
+                value={invoice.payment.reference}
+                onChange={(value) => updatePayment("reference", value)}
               />
             </div>
             <Field
               label="IBAN"
               value={invoice.payment.iban}
-              onChange={(value) => updatePayment("iban", value)}
+              onChange={(value) => updatePayment("iban", formatIban(value))}
+            />
+            <div className="payment-advisory">
+              <span>{taxCountry.paymentRail}</span>
+              <strong>{paymentHint}</strong>
+            </div>
+            <Field
+              label="Payment terms"
+              value={invoice.payment.terms}
+              onChange={(value) => updatePayment("terms", value)}
             />
             <label className="field">
               <span>Note</span>
@@ -545,9 +624,11 @@ export default function App() {
 
 const PartyFields = ({
   party,
+  taxIdLabel,
   onChange,
 }: {
   party: Party;
+  taxIdLabel: string;
   onChange: (key: keyof Party, value: string) => void;
 }) => (
   <>
@@ -571,7 +652,7 @@ const PartyFields = ({
         onChange={(value) => onChange("phone", value)}
       />
       <Field
-        label="VAT ID"
+        label={taxIdLabel}
         value={party.vatId}
         onChange={(value) => onChange("vatId", value)}
       />

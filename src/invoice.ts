@@ -15,9 +15,12 @@ export type LineItem = {
 };
 
 export type PaymentDetails = {
+  beneficiary: string;
   bank: string;
-  accountNumber: string;
   iban: string;
+  bic: string;
+  reference: string;
+  terms: string;
 };
 
 export type TaxCountry = {
@@ -25,6 +28,10 @@ export type TaxCountry = {
   name: string;
   rate: number;
   taxName: string;
+  locale: string;
+  taxIdLabel: string;
+  ibanLength: number | null;
+  paymentRail: string;
 };
 
 export type InvoiceData = {
@@ -44,6 +51,8 @@ export type InvoiceData = {
   payment: PaymentDetails;
   note: string;
 };
+
+type BaseTaxCountry = Pick<TaxCountry, "code" | "name" | "rate" | "taxName">;
 
 export const defaultInvoice: InvoiceData = {
   logoLetter: "L",
@@ -81,14 +90,161 @@ export const defaultInvoice: InvoiceData = {
   total: 0,
   autoTotal: true,
   payment: {
-    bank: "Chase",
-    accountNumber: "085629563",
-    iban: "0515113134346131313",
+    beneficiary: "Lost island AB",
+    bank: "SEB",
+    iban: "SE45 5000 0000 0583 9825 7466",
+    bic: "ESSESESS",
+    reference: "INV-01",
+    terms: "Due in 7 days",
   },
   note: "Thanks for great collaboration",
 };
 
-export const EUROPEAN_TAX_COUNTRIES: TaxCountry[] = [
+const EUROPEAN_IBAN_LENGTHS: Record<string, number> = {
+  AD: 24,
+  AL: 28,
+  AM: 28,
+  AT: 20,
+  AZ: 28,
+  BA: 20,
+  BE: 16,
+  BG: 22,
+  BY: 28,
+  CH: 21,
+  CY: 28,
+  CZ: 24,
+  DE: 22,
+  DK: 18,
+  EE: 20,
+  ES: 24,
+  FI: 18,
+  FR: 27,
+  GB: 22,
+  GE: 22,
+  GR: 27,
+  HR: 21,
+  HU: 28,
+  IE: 22,
+  IS: 26,
+  IT: 27,
+  LI: 21,
+  LT: 20,
+  LU: 20,
+  LV: 21,
+  MC: 27,
+  MD: 24,
+  ME: 22,
+  MK: 19,
+  MT: 31,
+  NL: 18,
+  NO: 15,
+  PL: 28,
+  PT: 25,
+  RO: 24,
+  RS: 22,
+  SE: 24,
+  SI: 19,
+  SK: 24,
+  SM: 27,
+  TR: 26,
+  UA: 29,
+  VA: 22,
+  XK: 20,
+};
+
+const EUROPEAN_LOCALES: Record<string, string> = {
+  AD: "ca-AD",
+  AL: "sq-AL",
+  AM: "hy-AM",
+  AT: "de-AT",
+  AZ: "az-AZ",
+  BA: "bs-BA",
+  BE: "nl-BE",
+  BG: "bg-BG",
+  BY: "be-BY",
+  CH: "de-CH",
+  CY: "el-CY",
+  CZ: "cs-CZ",
+  DE: "de-DE",
+  DK: "da-DK",
+  EE: "et-EE",
+  ES: "es-ES",
+  FI: "fi-FI",
+  FR: "fr-FR",
+  GB: "en-GB",
+  GE: "ka-GE",
+  GR: "el-GR",
+  HR: "hr-HR",
+  HU: "hu-HU",
+  IE: "en-IE",
+  IS: "is-IS",
+  IT: "it-IT",
+  LI: "de-LI",
+  LT: "lt-LT",
+  LU: "fr-LU",
+  LV: "lv-LV",
+  MC: "fr-MC",
+  MD: "ro-MD",
+  ME: "sr-ME",
+  MK: "mk-MK",
+  MT: "mt-MT",
+  NL: "nl-NL",
+  NO: "nb-NO",
+  PL: "pl-PL",
+  PT: "pt-PT",
+  RO: "ro-RO",
+  RS: "sr-RS",
+  RU: "ru-RU",
+  SE: "sv-SE",
+  SI: "sl-SI",
+  SK: "sk-SK",
+  SM: "it-SM",
+  TR: "tr-TR",
+  UA: "uk-UA",
+  VA: "it-VA",
+  XK: "sq-XK",
+};
+
+const SEPA_COUNTRY_CODES = new Set([
+  "AD",
+  "AT",
+  "BE",
+  "BG",
+  "CH",
+  "CY",
+  "CZ",
+  "DE",
+  "DK",
+  "EE",
+  "ES",
+  "FI",
+  "FR",
+  "GB",
+  "GR",
+  "HR",
+  "HU",
+  "IE",
+  "IS",
+  "IT",
+  "LI",
+  "LT",
+  "LU",
+  "LV",
+  "MC",
+  "MT",
+  "NL",
+  "NO",
+  "PL",
+  "PT",
+  "RO",
+  "SE",
+  "SI",
+  "SK",
+  "SM",
+  "VA",
+]);
+
+const BASE_TAX_COUNTRIES: BaseTaxCountry[] = [
   { code: "AL", name: "Albania", rate: 20, taxName: "VAT" },
   { code: "AD", name: "Andorra", rate: 4.5, taxName: "IGI" },
   { code: "AM", name: "Armenia", rate: 20, taxName: "VAT" },
@@ -141,6 +297,20 @@ export const EUROPEAN_TAX_COUNTRIES: TaxCountry[] = [
   { code: "VA", name: "Vatican City", rate: 0, taxName: "VAT" },
 ];
 
+export const EUROPEAN_TAX_COUNTRIES: TaxCountry[] = BASE_TAX_COUNTRIES.map(
+  (country) => ({
+    ...country,
+    locale: EUROPEAN_LOCALES[country.code] ?? "en-IE",
+    taxIdLabel: country.taxName === "IGI" ? "IGI ID" : "VAT ID",
+    ibanLength: EUROPEAN_IBAN_LENGTHS[country.code] ?? null,
+    paymentRail: SEPA_COUNTRY_CODES.has(country.code)
+      ? "SEPA credit transfer"
+      : country.code === "RU"
+        ? "Local bank / SWIFT transfer"
+        : "IBAN + SWIFT transfer",
+  }),
+);
+
 export const getTaxCountry = (code: string) =>
   EUROPEAN_TAX_COUNTRIES.find((country) => country.code === code) ??
   EUROPEAN_TAX_COUNTRIES.find((country) => country.code === "SE")!;
@@ -169,7 +339,36 @@ export const invoiceSubtotal = (invoice: InvoiceData) =>
     return sum + safeQuantity * item.price;
   }, 0);
 
-export const formatDate = (value: string) => {
+export const normalizeIban = (value: string) =>
+  value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+export const formatIban = (value: string) =>
+  normalizeIban(value).replace(/(.{4})/g, "$1 ").trim();
+
+export const ibanHint = (value: string, countryCode: string) => {
+  const country = getTaxCountry(countryCode);
+  const iban = normalizeIban(value);
+
+  if (!country.ibanLength) {
+    return "IBAN is not registered for this country; use local bank details plus SWIFT/BIC.";
+  }
+
+  if (!iban) {
+    return `${country.name} IBANs are ${country.ibanLength} characters.`;
+  }
+
+  if (!iban.startsWith(country.code)) {
+    return `Expected an IBAN starting with ${country.code}.`;
+  }
+
+  if (iban.length !== country.ibanLength) {
+    return `${country.name} IBANs are ${country.ibanLength} characters; this one has ${iban.length}.`;
+  }
+
+  return `${country.name} IBAN format looks right.`;
+};
+
+export const formatDate = (value: string, countryCode?: string) => {
   if (!value) {
     return "";
   }
@@ -179,23 +378,46 @@ export const formatDate = (value: string) => {
     return value;
   }
 
-  return `${month}/${day}/${year}`;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(
+    countryCode ? getTaxCountry(countryCode).locale : "en-IE",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone: "UTC",
+      year: "numeric",
+    },
+  )
+    .format(date)
+    .replace(/\u00a0/g, " ");
 };
 
 export const formatCurrency = (
   value: number,
-  options: { decimals?: number; grouped?: boolean } = {},
+  options: { countryCode?: string; decimals?: number; grouped?: boolean } = {},
 ) => {
   const safeValue = Number.isFinite(value) ? value : 0;
   const decimals = options.decimals ?? 0;
   const grouped = options.grouped ?? true;
-  const number = safeValue.toLocaleString("en-US", {
+  const locale = options.countryCode
+    ? getTaxCountry(options.countryCode).locale
+    : "en-IE";
+
+  return new Intl.NumberFormat(locale, {
+    currency: "EUR",
+    currencyDisplay: "symbol",
+    style: "currency",
     useGrouping: grouped,
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  });
-
-  return `€${number}`;
+  })
+    .format(safeValue)
+    .replace(/\u00a0/g, " ");
 };
 
 export const safeFileName = (invoiceNo: string) => {

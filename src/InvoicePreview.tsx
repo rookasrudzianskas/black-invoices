@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   formatCurrency,
   formatDate,
+  formatIban,
   formatRate,
   getTaxCountry,
+  invoiceSubtotal,
   invoiceWithResolvedTotal,
   type InvoiceData,
   type Party,
@@ -16,7 +18,15 @@ type InvoicePreviewProps = {
 const BASE_WIDTH = 595;
 const BASE_HEIGHT = 842;
 
-const PartyPreview = ({ title, party }: { title: string; party: Party }) => (
+const PartyPreview = ({
+  title,
+  party,
+  taxIdLabel,
+}: {
+  title: string;
+  party: Party;
+  taxIdLabel: string;
+}) => (
   <div className="preview-party">
     <div className="preview-muted preview-heading">{title}</div>
     <div>{party.name}</div>
@@ -24,7 +34,9 @@ const PartyPreview = ({ title, party }: { title: string; party: Party }) => (
     <div>{party.phone}</div>
     <div>{party.address}</div>
     <div>{party.cityLine}</div>
-    <div>VAT ID: {party.vatId}</div>
+    <div>
+      {taxIdLabel}: {party.vatId}
+    </div>
   </div>
 );
 
@@ -36,6 +48,7 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
     () => getTaxCountry(invoice.taxCountryCode),
     [invoice.taxCountryCode],
   );
+  const subtotal = useMemo(() => invoiceSubtotal(invoice), [invoice]);
 
   useEffect(() => {
     const element = hostRef.current;
@@ -81,59 +94,90 @@ export const InvoicePreview = ({ data }: InvoicePreviewProps) => {
             </div>
             <div>
               <span className="preview-muted">Issue date: </span>
-              {formatDate(invoice.issueDate)}
+              {formatDate(invoice.issueDate, invoice.taxCountryCode)}
             </div>
             <div className="preview-meta-right">
               <span className="preview-muted">Due date: </span>
-              {formatDate(invoice.dueDate)}
+              {formatDate(invoice.dueDate, invoice.taxCountryCode)}
             </div>
           </div>
 
           <div className="preview-from">
-            <PartyPreview title="From" party={invoice.from} />
+            <PartyPreview
+              taxIdLabel={taxCountry.taxIdLabel}
+              title="From"
+              party={invoice.from}
+            />
           </div>
           <div className="preview-to">
-            <PartyPreview title="To" party={invoice.to} />
+            <PartyPreview
+              taxIdLabel={taxCountry.taxIdLabel}
+              title="To"
+              party={invoice.to}
+            />
           </div>
 
           <div className="preview-items">
             <div className="preview-item-row preview-muted">
               <span>Item</span>
-              <span>Quantity</span>
-              <span>Price</span>
+              <span>Qty</span>
+              <span>Unit price</span>
             </div>
             {invoice.items.map((item) => (
               <div className="preview-item-row" key={item.id}>
                 <span>{item.item}</span>
                 <span>{item.quantity}</span>
-                <span>{formatCurrency(item.price, { grouped: false })}</span>
+                <span>
+                  {formatCurrency(item.price, {
+                    countryCode: invoice.taxCountryCode,
+                    grouped: false,
+                  })}
+                </span>
               </div>
             ))}
           </div>
 
           <div className="preview-totals">
             <div className="preview-tax-row">
+              <span className="preview-muted">Subtotal</span>
+              <span className="preview-muted">
+                {formatCurrency(subtotal, {
+                  countryCode: invoice.taxCountryCode,
+                  decimals: 2,
+                })}
+              </span>
+            </div>
+            <div className="preview-tax-row">
               <span className="preview-muted">
                 {taxCountry.taxName} {formatRate(taxCountry.rate)}
               </span>
               <span className="preview-muted">
-                {formatCurrency(invoice.salesTax)}
+                {formatCurrency(invoice.salesTax, {
+                  countryCode: invoice.taxCountryCode,
+                  decimals: 2,
+                })}
               </span>
             </div>
             <div className="preview-rule" />
             <div className="preview-total-row">
               <span className="preview-muted">Total</span>
               <span className="preview-total">
-                {formatCurrency(invoice.total, { decimals: 2 })}
+                {formatCurrency(invoice.total, {
+                  countryCode: invoice.taxCountryCode,
+                  decimals: 2,
+                })}
               </span>
             </div>
           </div>
 
           <div className="preview-payment">
             <div className="preview-muted preview-heading">Payment details</div>
+            <div>Beneficiary: {invoice.payment.beneficiary}</div>
             <div>Bank: {invoice.payment.bank}</div>
-            <div>Account number: {invoice.payment.accountNumber},</div>
-            <div>Iban: {invoice.payment.iban},</div>
+            <div>IBAN: {formatIban(invoice.payment.iban)}</div>
+            <div>BIC/SWIFT: {invoice.payment.bic}</div>
+            <div>Reference: {invoice.payment.reference}</div>
+            <div>{invoice.payment.terms}</div>
           </div>
 
           <div className="preview-note">

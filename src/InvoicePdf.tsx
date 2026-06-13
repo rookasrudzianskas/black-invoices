@@ -10,8 +10,10 @@ import path from "node:path";
 import {
   formatCurrency,
   formatDate,
+  formatIban,
   formatRate,
   getTaxCountry,
+  invoiceSubtotal,
   invoiceWithResolvedTotal,
   type InvoiceData,
   type Party,
@@ -38,7 +40,15 @@ type InvoicePdfProps = {
   data: InvoiceData;
 };
 
-const PartyBlock = ({ title, party }: { title: string; party: Party }) => (
+const PartyBlock = ({
+  title,
+  party,
+  taxIdLabel,
+}: {
+  title: string;
+  party: Party;
+  taxIdLabel: string;
+}) => (
   <View style={styles.partyBlock}>
     <Text style={styles.label}>{title}</Text>
     <Text style={styles.line}>{party.name}</Text>
@@ -46,13 +56,16 @@ const PartyBlock = ({ title, party }: { title: string; party: Party }) => (
     <Text style={styles.line}>{party.phone}</Text>
     <Text style={styles.line}>{party.address}</Text>
     <Text style={styles.line}>{party.cityLine}</Text>
-    <Text style={styles.line}>VAT ID: {party.vatId}</Text>
+    <Text style={styles.line}>
+      {taxIdLabel}: {party.vatId}
+    </Text>
   </View>
 );
 
 export const InvoicePdf = ({ data }: InvoicePdfProps) => {
   const invoice = invoiceWithResolvedTotal(data);
   const taxCountry = getTaxCountry(invoice.taxCountryCode);
+  const subtotal = invoiceSubtotal(invoice);
 
   return (
     <Document
@@ -76,26 +89,34 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
           </Text>
           <Text style={styles.metaItem}>
             <Text style={styles.muted}>Issue date: </Text>
-            {formatDate(invoice.issueDate)}
+            {formatDate(invoice.issueDate, invoice.taxCountryCode)}
           </Text>
           <Text style={[styles.metaItem, styles.metaRight]}>
             <Text style={styles.muted}>Due date: </Text>
-            {formatDate(invoice.dueDate)}
+            {formatDate(invoice.dueDate, invoice.taxCountryCode)}
           </Text>
         </View>
 
         <View style={styles.fromBlock}>
-          <PartyBlock title="From" party={invoice.from} />
+          <PartyBlock
+            taxIdLabel={taxCountry.taxIdLabel}
+            title="From"
+            party={invoice.from}
+          />
         </View>
         <View style={styles.toBlock}>
-          <PartyBlock title="To" party={invoice.to} />
+          <PartyBlock
+            taxIdLabel={taxCountry.taxIdLabel}
+            title="To"
+            party={invoice.to}
+          />
         </View>
 
         <View style={styles.items}>
           <View style={styles.itemHeader}>
             <Text style={[styles.label, styles.itemName]}>Item</Text>
-            <Text style={[styles.label, styles.itemQuantity]}>Quantity</Text>
-            <Text style={[styles.label, styles.itemPrice]}>Price</Text>
+            <Text style={[styles.label, styles.itemQuantity]}>Qty</Text>
+            <Text style={[styles.label, styles.itemPrice]}>Unit price</Text>
           </View>
           {invoice.items.map((item) => (
             <View key={item.id} style={styles.itemRow}>
@@ -104,7 +125,10 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
                 {item.quantity}
               </Text>
               <Text style={[styles.line, styles.itemPrice]}>
-                {formatCurrency(item.price, { grouped: false })}
+                {formatCurrency(item.price, {
+                  countryCode: invoice.taxCountryCode,
+                  grouped: false,
+                })}
               </Text>
             </View>
           ))}
@@ -112,29 +136,51 @@ export const InvoicePdf = ({ data }: InvoicePdfProps) => {
 
         <View style={styles.totals}>
           <View style={styles.taxRow}>
+            <Text style={styles.label}>Subtotal</Text>
+            <Text style={styles.taxValue}>
+              {formatCurrency(subtotal, {
+                countryCode: invoice.taxCountryCode,
+                decimals: 2,
+              })}
+            </Text>
+          </View>
+          <View style={styles.taxRow}>
             <Text style={styles.label}>
               {taxCountry.taxName} {formatRate(taxCountry.rate)}
             </Text>
             <Text style={styles.taxValue}>
-              {formatCurrency(invoice.salesTax, { grouped: true })}
+              {formatCurrency(invoice.salesTax, {
+                countryCode: invoice.taxCountryCode,
+                decimals: 2,
+                grouped: true,
+              })}
             </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.totalRow}>
             <Text style={styles.label}>Total</Text>
             <Text style={styles.totalValue}>
-              {formatCurrency(invoice.total, { decimals: 2, grouped: true })}
+              {formatCurrency(invoice.total, {
+                countryCode: invoice.taxCountryCode,
+                decimals: 2,
+                grouped: true,
+              })}
             </Text>
           </View>
         </View>
 
         <View style={styles.payment}>
           <Text style={styles.label}>Payment details</Text>
-          <Text style={styles.line}>Bank: {invoice.payment.bank}</Text>
           <Text style={styles.line}>
-            Account number: {invoice.payment.accountNumber},
+            Beneficiary: {invoice.payment.beneficiary}
           </Text>
-          <Text style={styles.line}>Iban: {invoice.payment.iban},</Text>
+          <Text style={styles.line}>Bank: {invoice.payment.bank}</Text>
+          <Text style={styles.line}>IBAN: {formatIban(invoice.payment.iban)}</Text>
+          <Text style={styles.line}>
+            BIC/SWIFT: {invoice.payment.bic}
+          </Text>
+          <Text style={styles.line}>Reference: {invoice.payment.reference}</Text>
+          <Text style={styles.line}>{invoice.payment.terms}</Text>
         </View>
 
         <View style={styles.note}>
@@ -159,57 +205,57 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paper,
     color: colors.ink,
     fontFamily: "GeistMono",
-    fontSize: 12.7,
-    lineHeight: 1.62,
+    fontSize: 11.45,
+    lineHeight: 1.58,
     position: "relative",
   },
   logo: {
     position: "absolute",
-    left: 26,
-    top: 35,
-    width: 72,
-    height: 72,
+    left: 38,
+    top: 38,
+    width: 66,
+    height: 66,
     backgroundColor: colors.logoPaper,
   },
   logoText: {
     color: colors.paper,
-    fontSize: 45,
+    fontSize: 42,
     fontWeight: 700,
     lineHeight: 1,
-    marginLeft: 20,
-    marginTop: 19,
+    marginLeft: 18,
+    marginTop: 16,
   },
   metaRow: {
     position: "absolute",
-    left: 26,
-    right: 26,
-    top: 153,
+    left: 38,
+    right: 38,
+    top: 151,
     display: "flex",
     flexDirection: "row",
     justifyContent: "space-between",
-    fontSize: 12.3,
+    fontSize: 11.2,
   },
   metaItem: {
-    width: 168,
+    width: 158,
     color: colors.ink,
   },
   metaRight: {
     textAlign: "right",
-    width: 180,
+    width: 170,
   },
   muted: {
     color: colors.muted,
   },
   fromBlock: {
     position: "absolute",
-    left: 26,
-    top: 211,
-    width: 220,
+    left: 38,
+    top: 216,
+    width: 246,
   },
   toBlock: {
     position: "absolute",
-    left: 296,
-    top: 211,
+    left: 316,
+    top: 216,
     width: 240,
   },
   partyBlock: {
@@ -225,9 +271,9 @@ const styles = StyleSheet.create({
   },
   items: {
     position: "absolute",
-    left: 26,
-    top: 397,
-    width: 543,
+    left: 38,
+    top: 378,
+    width: 519,
   },
   itemHeader: {
     display: "flex",
@@ -236,12 +282,13 @@ const styles = StyleSheet.create({
   itemRow: {
     display: "flex",
     flexDirection: "row",
+    marginTop: 4,
   },
   itemName: {
-    width: 278,
+    width: 314,
   },
   itemQuantity: {
-    width: 118,
+    width: 58,
   },
   itemPrice: {
     width: 147,
@@ -249,15 +296,16 @@ const styles = StyleSheet.create({
   },
   totals: {
     position: "absolute",
-    left: 296,
-    top: 488,
-    width: 265,
+    left: 316,
+    top: 500,
+    width: 241,
   },
   taxRow: {
     display: "flex",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 7,
   },
   taxValue: {
     color: colors.muted,
@@ -266,8 +314,8 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 1,
     backgroundColor: colors.rule,
-    marginTop: 13,
-    marginBottom: 19,
+    marginTop: 7,
+    marginBottom: 18,
   },
   totalRow: {
     display: "flex",
@@ -277,19 +325,19 @@ const styles = StyleSheet.create({
   },
   totalValue: {
     color: colors.ink,
-    fontSize: 24,
+    fontSize: 23,
     lineHeight: 1,
   },
   payment: {
     position: "absolute",
-    left: 26,
-    top: 737,
-    width: 245,
+    left: 38,
+    top: 690,
+    width: 252,
   },
   note: {
     position: "absolute",
-    left: 286,
-    top: 737,
-    width: 285,
+    left: 316,
+    top: 690,
+    width: 241,
   },
 });
