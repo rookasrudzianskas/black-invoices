@@ -4379,7 +4379,7 @@ export const createDefaultInvoice = (): InvoiceData => {
     issueDate,
     dueDate,
     taxCountryCode: country.code,
-    languageMode: "english",
+    languageMode: "local",
     from: country.examples.from,
     to: country.examples.to,
     items: [
@@ -4396,7 +4396,7 @@ export const createDefaultInvoice = (): InvoiceData => {
     payment: {
       ...country.examples.payment,
       reference: "INV-01",
-      terms: paymentTermsForDueDate(dueDate, country.code, "english"),
+      terms: paymentTermsForDueDate(dueDate, country.code, "local"),
     },
     note: country.examples.note,
   };
@@ -4425,6 +4425,27 @@ export const invoiceWithCountryExamples = (
     previousCountry.code,
     invoice.languageMode,
   );
+  const previousEnglishTerms = paymentTermsForDueDate(
+    invoice.dueDate,
+    previousCountry.code,
+    "english",
+  );
+  const previousLocalTerms = paymentTermsForDueDate(
+    invoice.dueDate,
+    previousCountry.code,
+    "local",
+  );
+  const nextTerms = paymentTermsForDueDate(
+    invoice.dueDate,
+    nextCountry.code,
+    "local",
+  );
+  const shouldSwapTerms = [
+    previousCountry.examples.payment.terms,
+    previousTerms,
+    previousEnglishTerms,
+    previousLocalTerms,
+  ].includes(invoice.payment.terms);
   const shouldSwapPayment =
     invoice.payment.beneficiary === previousCountry.examples.payment.beneficiary &&
     invoice.payment.bank === previousCountry.examples.payment.bank &&
@@ -4438,6 +4459,7 @@ export const invoiceWithCountryExamples = (
   return {
     ...invoice,
     taxCountryCode: nextCountry.code,
+    languageMode: "local",
     from: sameRecord(invoice.from, previousCountry.examples.from)
       ? nextCountry.examples.from
       : invoice.from,
@@ -4456,13 +4478,12 @@ export const invoiceWithCountryExamples = (
       ? {
           ...nextCountry.examples.payment,
           reference: invoice.invoiceNo,
-          terms: paymentTermsForDueDate(
-            invoice.dueDate,
-            nextCountry.code,
-            invoice.languageMode,
-          ),
+          terms: nextTerms,
         }
-      : invoice.payment,
+      : {
+          ...invoice.payment,
+          terms: shouldSwapTerms ? nextTerms : invoice.payment.terms,
+        },
   };
 };
 
